@@ -1,0 +1,40 @@
+CREATE TABLE IF NOT EXISTS account (
+    account_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    account_number VARCHAR(20) NOT NULL UNIQUE,
+    account_holder_name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE,
+    phone_number VARCHAR(15) NOT NULL UNIQUE,
+    balance DECIMAL(18, 2) NOT NULL DEFAULT 0.00 CHECK (balance >= 0.00),
+    currency VARCHAR(10) NOT NULL DEFAULT 'INR',
+    status ENUM('ACTIVE', 'INACTIVE', 'BLOCKED') NOT NULL DEFAULT 'ACTIVE',
+    version INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS payment(
+    payment_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    payment_reference VARCHAR(50) UNIQUE,
+    source_account_id BIGINT NOT NULL,
+    destination_account_id BIGINT NOT NULL,
+    amount DECIMAL(18, 2) NOT NULL CHECK (amount > 0.00),
+    currency VARCHAR(10) NOT NULL DEFAULT 'INR',
+    status ENUM('CREATED','VALIDATED','SENT','COMPLETED','FAILED') NOT NULL DEFAULT 'CREATED',
+    failure_reason VARCHAR(255),
+    retry_count INT NOT NULL DEFAULT 0,
+    idempotency_key VARCHAR(100) NOT NULL UNIQUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (source_account_id) REFERENCES account(account_id),
+    FOREIGN KEY (destination_account_id) REFERENCES account(account_id)
+
+    );
+
+CREATE TABLE IF NOT EXISTS payment_history (
+    history_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    payment_id BIGINT NOT NULL,
+    status ENUM('CREATED','VALIDATED','SENT','COMPLETED','FAILED') NOT NULL,
+    message VARCHAR(255),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (payment_id) REFERENCES payment(payment_id)
+);
