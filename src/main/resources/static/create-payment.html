@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>New Payment — FlowState</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div class="main-content">
+
+    <header class="topbar">
+      <span class="topbar-title">New Payment</span>
+      <div class="topbar-actions">
+        <a href="payments.html" class="btn btn-secondary btn-sm">← All Payments</a>
+      </div>
+    </header>
+
+    <main class="page-body">
+      <div class="breadcrumb">
+        <a href="dashboard.html">Dashboard</a>
+        <span class="sep">›</span>
+        <a href="payments.html">Payments</a>
+        <span class="sep">›</span>
+        <span class="current">New Payment</span>
+      </div>
+
+      <!-- ── Payment result (shown AFTER successful submission) ── -->
+      <div id="payment-result" style="display:none">
+        <div class="card result-card">
+          <div style="text-align:center;padding:12px 0 24px">
+            <div class="result-icon success">✓</div>
+            <h2 style="font-size:1.2rem;margin-bottom:6px">Payment Submitted</h2>
+            <p style="color:var(--gray-500);font-size:.875rem">Your payment has been received and is being processed.</p>
+          </div>
+          <div id="payment-result-details"></div>
+          <div style="display:flex;gap:10px;justify-content:center;margin-top:24px">
+            <a href="payments.html" class="btn btn-secondary">View All Payments</a>
+            <button class="btn btn-primary" id="make-another-btn">Make Another Payment</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Payment form ─────────────────────────────────────── -->
+      <div id="payment-form-section">
+        <div class="card" style="max-width:680px">
+          <div class="section-header" style="margin-bottom:20px">
+            <h2>Transfer Details</h2>
+          </div>
+
+          <div id="form-alert"></div>
+
+          <form id="payment-form" novalidate>
+            <div class="form-grid">
+
+              <div class="form-group">
+                <label for="source-account">From Account Number <span style="color:var(--danger)">*</span></label>
+                <select id="source-account" required>
+                  <option value="">— Select source account —</option>
+                </select>
+                <span class="form-hint">Debit account</span>
+              </div>
+
+              <div class="form-group">
+                <label for="dest-account">To Account Number <span style="color:var(--danger)">*</span></label>
+                <select id="dest-account" required>
+                  <option value="">— Select destination account —</option>
+                </select>
+                <span class="form-hint">Credit account</span>
+              </div>
+
+              <div class="form-group">
+                <label for="amount">Amount <span style="color:var(--danger)">*</span></label>
+                <input type="number" id="amount" min="0.01" step="0.01" placeholder="e.g. 500.00" required />
+              </div>
+
+              <div class="form-group">
+                <label for="currency">Currency <span style="color:var(--danger)">*</span></label>
+                <select id="currency" required>
+                  <option value="INR">INR — Indian Rupee</option>
+                  <option value="USD">USD — US Dollar</option>
+                  <option value="EUR">EUR — Euro</option>
+                  <option value="GBP">GBP — British Pound</option>
+                </select>
+              </div>
+
+              <div class="form-group full">
+                <label for="idempotency-key">Idempotency Key</label>
+                <div style="display:flex;gap:8px">
+                  <input type="text" id="idempotency-key" readonly
+                    style="background:var(--gray-50);font-family:monospace;font-size:.8rem" />
+                  <button type="button" class="btn btn-secondary btn-sm" id="regenerate-key-btn" title="Generate new key">↻</button>
+                </div>
+                <span class="form-hint">Auto-generated via <code>crypto.randomUUID()</code>. Used to prevent duplicate payments.</span>
+              </div>
+
+            </div>
+
+            <div class="form-actions" style="margin-top:20px">
+              <button type="submit" class="btn btn-primary btn-lg" id="submit-btn">
+                Submit Payment
+              </button>
+              <button type="reset" class="btn btn-secondary btn-lg">Clear</button>
+            </div>
+          </form>
+
+          <div style="margin-top:16px;padding:12px;background:var(--gray-50);border-radius:var(--radius);font-size:.8rem;color:var(--gray-500)">
+            <strong>Request body sent to <code>POST /payments</code>:</strong><br>
+            <code id="request-preview" style="word-break:break-all;color:var(--gray-700)">{ … fill the form … }</code>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/app.js"></script>
+<script src="js/sidebar.js"></script>
+<script src="js/create-payment.js"></script>
+</body>
+</html>
+
