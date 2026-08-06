@@ -25,11 +25,13 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -52,7 +54,7 @@ class PaymentServiceImplTest {
     private PaymentServiceImpl paymentService;
 
     @Test
-    void createPayment_success_updatesStatusAndBalances() {
+    void createPayment_success_returnsCreatedImmediately_andProcessesAsync() {
         PaymentRequest request = new PaymentRequest(
                 "ACC1001", "ACC1002", new BigDecimal("100.00"), "INR", "idem-success-1"
         );
@@ -72,22 +74,22 @@ class PaymentServiceImplTest {
         when(accountRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(destination));
 
         Payment completed = payment(10L, "PAY000010", 1L, 2L, new BigDecimal("100.00"), "INR", "COMPLETED", null, 0, "idem-success-1");
-        when(paymentRepository.findById(10L)).thenReturn(Optional.of(completed));
+        when(paymentRepository.findById(10L)).thenReturn(Optional.of(created), Optional.of(completed));
 
         PaymentResponse response = paymentService.createPayment(request);
 
         assertEquals(10L, response.payment_id());
-        assertEquals("PAY000010", response.payment_reference());
-        assertEquals("COMPLETED", response.status());
-        assertEquals("Accepted", response.message());
+        assertNull(response.payment_reference());
+        assertEquals("CREATED", response.status());
+        assertTrue(response.message().contains("processing started"));
 
-        verify(paymentRepository).updatePaymentReference(10L, "PAY000010");
-        verify(paymentRepository).updatePaymentStatus(10L, "VALIDATED");
-        verify(paymentRepository).updatePaymentStatus(10L, "SENT");
-        verify(paymentRepository).updatePaymentStatus(10L, "COMPLETED");
+        verify(paymentRepository, timeout(1000)).updatePaymentReference(10L, "PAY000010");
+        verify(paymentRepository, timeout(1000)).updatePaymentStatus(10L, "VALIDATED");
+        verify(paymentRepository, timeout(1000)).updatePaymentStatus(10L, "SENT");
+        verify(paymentRepository, timeout(1000)).updatePaymentStatus(10L, "COMPLETED");
 
         ArgumentCaptor<Account> accountCaptor = ArgumentCaptor.forClass(Account.class);
-        verify(accountRepository, times(2)).update(accountCaptor.capture());
+        verify(accountRepository, timeout(1000).times(2)).update(accountCaptor.capture());
         List<Account> updatedAccounts = accountCaptor.getAllValues();
 
         Account updatedSource = updatedAccounts.stream()
@@ -135,7 +137,7 @@ class PaymentServiceImplTest {
     }
 
     @Test
-    void createPayment_gatewayFailure_marksPaymentFailedAndIncrementsRetry() {
+    void createPayment_gatewayFailure_returnsCreatedImmediately_andFailsAsync() {
         PaymentRequest request = new PaymentRequest(
                 "ACC1001", "ACC1002", new BigDecimal("100.00"), "INR", "idem-gw-fail"
         );
@@ -152,17 +154,47 @@ class PaymentServiceImplTest {
         when(gatewayClient.processPayment(any())).thenReturn(new GatewayResponse("FAILED", "Gateway timeout"));
 
         Payment failed = payment(11L, "PAY000011", 1L, 2L, new BigDecimal("100.00"), "INR", "FAILED", "FAILED", 1, "idem-gw-fail");
-        when(paymentRepository.findById(11L)).thenReturn(Optional.of(failed));
+        when(paymentRepository.findById(11L)).thenReturn(Optional.of(created), Optional.of(failed));
 
         PaymentResponse response = paymentService.createPayment(request);
 
-        verify(paymentRepository).updatePaymentStatusAndFailureReason(11L, "FAILED", "FAILED");
-        verify(paymentRepository).incrementRetryCount(11L);
-        verify(accountRepository, never()).update(any(Account.class));
+        assertEquals("CREATED", response.status());
+        assertTrue(response.message().contains("processing started"));
 
-        assertEquals("FAILED", response.status());
-        assertEquals("Gateway timeout", response.message());
-        assertEquals("FAILED", response.failure_reason());
+        verify(paymentRepository, timeout(1000)).updatePaymentStatusAndFailureReason(11L, "FAILED", "FAILED");
+        verify(paymentRepository, timeout(1000)).incrementRetryCount(11L);
+        verify(accountRepository, never()).update(any(Account.class));
+    }
+
+    @Test
+    void cancelPayment_createdStatus_cancelsPayment() {
+        Payment created = payment(14L, "PAY000014", 1L, 2L, new BigDecimal("50.00"), "INR", "CREATED", null, 0, "idem-created-cancel");
+        when(paymentRepository.findById(14L)).thenReturn(Optional.of(created));
+
+        paymentService.cancelPayment(14L);
+
+        verify(paymentRepository).cancelPayment(14L);
+        verify(paymentHistoryRepository).save(any());
+    }
+
+    @Test
+    void cancelPayment_validatedStatus_cancelsPayment() {
+        Payment validated = payment(15L, "PAY000015", 1L, 2L, new BigDecimal("60.00"), "INR", "VALIDATED", null, 0, "idem-validated-cancel");
+        when(paymentRepository.findById(15L)).thenReturn(Optional.of(validated));
+
+        paymentService.cancelPayment(15L);
+
+        verify(paymentRepository).cancelPayment(15L);
+        verify(paymentHistoryRepository).save(any());
+    }
+
+    @Test
+    void cancelPayment_sentStatus_throwsInvalidPaymentException() {
+        Payment sent = payment(16L, "PAY000016", 1L, 2L, new BigDecimal("60.00"), "INR", "SENT", null, 0, "idem-sent");
+        when(paymentRepository.findById(16L)).thenReturn(Optional.of(sent));
+
+        assertThrows(InvalidPaymentException.class, () -> paymentService.cancelPayment(16L));
+        verify(paymentRepository, never()).cancelPayment(any(Long.class));
     }
 
     @Test

@@ -1,20 +1,52 @@
 /**
- * payments.js — Displays payment records.
- *
- * Because the backend has no "get all payments" endpoint, this page:
- *   1. Fetches all accounts → for each account calls
- *      GET /payments/account/{accountId} and de-duplicates results.
- *   2. Also supports direct lookup via:
- *      GET /payments/{paymentId}
- *      GET /payments/account/{accountId}
+ * payments.js — Displays payment records for one selected account at a time.
  */
 
+const FS_SELECTED_ACCOUNT_KEY = 'fs_selected_account_number';
+
+const paymentsState = {
+  accounts: [],
+  selectedAccountId: null,
+  paymentsByAccount: new Map(),
+  activeFilters: { direction: '', status: '' },
+};
+
+function getSelectedAccount() {
+  return paymentsState.accounts.find(acc => String(acc.account_id) === String(paymentsState.selectedAccountId)) || null;
+}
+
+function formatAccountLabel(account) {
+  return `${account.account_number} — ${account.account_holder_name} (${formatCurrency(account.balance, account.currency)})`;
+}
+
+function sortPaymentsDesc(payments) {
+  return [...payments].sort((a, b) => b.payment_id - a.payment_id);
+}
+
+function getPaymentDirection(payment, accountId) {
+  if (!accountId) return '—';
+  if (String(payment.source_account_id) === String(accountId)) return 'Debited';
+  if (String(payment.destination_account_id) === String(accountId)) return 'Credited';
+  return '—';
+}
+
+function shouldHideForSelectedAccount(payment, accountId) {
+  const isCreditedForCurrent = String(payment.destination_account_id) === String(accountId);
+  const isFailed = String(payment.status || '').toUpperCase() === 'FAILED';
+  return isCreditedForCurrent && isFailed;
+}
+
+function getAccountNumberFromState(accountId) {
+  const acc = paymentsState.accounts.find(a => String(a.account_id) === String(accountId));
+  return acc ? acc.account_number : `#${accountId}`;
+}
+
 // ── Render a payments table ──────────────────────────────────────────────────
-function renderPaymentsTable(payments, titleText) {
+function renderPaymentsTable(payments, titleText, selectedAccountId) {
   if (titleText) document.getElementById('results-title').textContent = titleText;
 
   if (!payments || payments.length === 0) {
-    showEmpty('payments-container', 'No payments found', 'Try a different search or create a new payment.');
+    showEmpty('payments-container', 'No payments found', 'No payments exist for this account yet.');
     return;
   }
 
@@ -22,7 +54,7 @@ function renderPaymentsTable(payments, titleText) {
     <div class="table-wrapper">
       <table>
         <thead><tr>
-          <th>ID</th><th>Reference</th><th>From Acc</th><th>To Acc</th>
+          <th>ID</th><th>Reference</th><th>From Acc</th><th>To Acc</th><th>Direction</th>
           <th>Amount</th><th>Currency</th><th>Status</th><th>Retries</th><th></th>
         </tr></thead>
         <tbody>
@@ -30,8 +62,9 @@ function renderPaymentsTable(payments, titleText) {
             <tr>
               <td>${escapeHtml(String(p.payment_id))}</td>
               <td><code style="font-size:.78rem">${escapeHtml(p.payment_reference || '—')}</code></td>
-              <td>${escapeHtml(String(p.source_account_id))}</td>
-              <td>${escapeHtml(String(p.destination_account_id))}</td>
+              <td><a href="account-details.html?id=${p.source_account_id}">${escapeHtml(getAccountNumberFromState(p.source_account_id))}</a></td>
+              <td><a href="account-details.html?id=${p.destination_account_id}">${escapeHtml(getAccountNumberFromState(p.destination_account_id))}</a></td>
+              <td><span class="badge">${escapeHtml(getPaymentDirection(p, selectedAccountId))}</span></td>
               <td><strong>${formatCurrency(p.amount, p.currency)}</strong></td>
               <td>${escapeHtml(p.currency)}</td>
               <td><span class="${statusBadgeClass(p.status)}">${escapeHtml(p.status)}</span></td>
@@ -46,38 +79,110 @@ function renderPaymentsTable(payments, titleText) {
     </div>`;
 }
 
-// ── Load all payments (sampled across accounts) ──────────────────────────────
-async function loadAllPayments() {
+async function loadPaymentsPage() {
   showLoading('payments-container');
 
-  let accounts = [];
   try {
-    accounts = await getAllAccounts();
+    paymentsState.accounts = await getAllAccounts();
   } catch (err) {
     showError('payments-container', getErrorMessage(err));
     return;
   }
 
-  const seen = new Set();
-  const allPayments = [];
+  if (!paymentsState.accounts.length) {
+    showEmpty('payments-container', 'No accounts found', 'Create an account first to view payments.');
+    return;
+  }
 
-  for (const acc of accounts) {
-    try {
-      const payments = await getPaymentsByAccountId(acc.account_id);
-      for (const p of payments) {
-        if (!seen.has(p.payment_id)) {
-          seen.add(p.payment_id);
-          allPayments.push(p);
-        }
-      }
-    } catch (_) {
-      // Skip accounts with no payments silently
+  populateAccountSwitcher();
+  await loadPaymentsForSelectedAccount();
+}
+
+function populateAccountSwitcher() {
+  const switcher = document.getElementById('account-switcher');
+
+  switcher.innerHTML = '';
+  paymentsState.accounts.forEach(account => {
+    const option = new Option(formatAccountLabel(account), String(account.account_id));
+    switcher.add(option);
+  });
+
+  if (!paymentsState.selectedAccountId) {
+    // Restore from localStorage by matching account number → account ID
+    const savedNumber = localStorage.getItem(FS_SELECTED_ACCOUNT_KEY);
+    if (savedNumber) {
+      const savedAccount = paymentsState.accounts.find(a => a.account_number === savedNumber);
+      if (savedAccount) paymentsState.selectedAccountId = String(savedAccount.account_id);
+    }
+    if (!paymentsState.selectedAccountId) {
+      paymentsState.selectedAccountId = String(paymentsState.accounts[0].account_id);
     }
   }
 
-  // Sort newest first by payment_id
-  allPayments.sort((a, b) => b.payment_id - a.payment_id);
-  renderPaymentsTable(allPayments, `All Payments (${allPayments.length} found across ${accounts.length} accounts)`);
+  switcher.value = String(paymentsState.selectedAccountId);
+
+  switcher.onchange = async () => {
+    paymentsState.selectedAccountId = switcher.value;
+    // Save account number to localStorage so new-payment page stays in sync
+    const account = paymentsState.accounts.find(a => String(a.account_id) === switcher.value);
+    if (account) localStorage.setItem(FS_SELECTED_ACCOUNT_KEY, account.account_number);
+    await loadPaymentsForSelectedAccount();
+  };
+}
+
+async function loadPaymentsForSelectedAccount(forceReload = false) {
+  const account = getSelectedAccount();
+  if (!account) {
+    showError('payments-container', 'Selected account is not available.');
+    return;
+  }
+
+  showLoading('payments-container');
+  const accountId = String(account.account_id);
+
+  if (forceReload || !paymentsState.paymentsByAccount.has(accountId)) {
+    try {
+      const payments = await getPaymentsByAccountId(accountId);
+      paymentsState.paymentsByAccount.set(accountId, payments || []);
+    } catch (err) {
+      showError('payments-container', getErrorMessage(err));
+      showToast(getErrorMessage(err), 'error');
+      return;
+    }
+  }
+
+  applyFiltersAndRender();
+}
+
+function applyFiltersAndRender() {
+  const account = getSelectedAccount();
+  if (!account) return;
+
+  const accountId = String(account.account_id);
+  const allPayments = sortPaymentsDesc(paymentsState.paymentsByAccount.get(accountId) || []);
+  const visiblePayments = allPayments.filter(p => !shouldHideForSelectedAccount(p, accountId));
+
+  const directionFilter = paymentsState.activeFilters.direction;
+  const statusFilter = paymentsState.activeFilters.status;
+
+  const filtered = visiblePayments.filter(p => {
+    if (directionFilter) {
+      const dir = getPaymentDirection(p, accountId);
+      if (dir !== directionFilter) return false;
+    }
+    if (statusFilter && p.status !== statusFilter) return false;
+    return true;
+  });
+
+  const filterSuffix = (directionFilter || statusFilter)
+    ? ` — filtered ${filtered.length} of ${visiblePayments.length}`
+    : '';
+
+  renderPaymentsTable(
+    filtered,
+    `Payments for ${account.account_number}${filterSuffix}`,
+    accountId
+  );
 }
 
 // ── Lookup by payment ID ─────────────────────────────────────────────────────
@@ -88,7 +193,11 @@ document.getElementById('lookup-by-id-btn').addEventListener('click', async () =
   showLoading('payments-container');
   try {
     const payment = await getPaymentById(paymentId);
-    renderPaymentsTable([payment], `Payment #${paymentId}`);
+    if (shouldHideForSelectedAccount(payment, paymentsState.selectedAccountId)) {
+      showEmpty('payments-container', 'No payments found', 'This credited failed payment is hidden for the selected account.');
+      return;
+    }
+    renderPaymentsTable([payment], `Payment #${paymentId}`, paymentsState.selectedAccountId);
   } catch (err) {
     showError('payments-container', getErrorMessage(err));
     showToast(getErrorMessage(err), 'error');
@@ -103,23 +212,11 @@ document.getElementById('lookup-by-reference-btn').addEventListener('click', asy
   showLoading('payments-container');
   try {
     const payment = await getPaymentByReference(paymentReference);
-    renderPaymentsTable([payment], `Payment Ref: ${paymentReference}`);
-  } catch (err) {
-    showError('payments-container', getErrorMessage(err));
-    showToast(getErrorMessage(err), 'error');
-  }
-});
-
-// ── Lookup by account ID ─────────────────────────────────────────────────────
-document.getElementById('lookup-by-account-btn').addEventListener('click', async () => {
-  const accountId = document.getElementById('lookup-account-id').value.trim();
-  if (!accountId) { showToast('Please enter an account ID', 'info'); return; }
-
-  showLoading('payments-container');
-  try {
-    const payments = await getPaymentsByAccountId(accountId);
-    const sorted = [...payments].sort((a, b) => b.payment_id - a.payment_id);
-    renderPaymentsTable(sorted, `Payments for Account #${accountId}`);
+    if (shouldHideForSelectedAccount(payment, paymentsState.selectedAccountId)) {
+      showEmpty('payments-container', 'No payments found', 'This credited failed payment is hidden for the selected account.');
+      return;
+    }
+    renderPaymentsTable([payment], `Payment Ref: ${paymentReference}`, paymentsState.selectedAccountId);
   } catch (err) {
     showError('payments-container', getErrorMessage(err));
     showToast(getErrorMessage(err), 'error');
@@ -127,7 +224,20 @@ document.getElementById('lookup-by-account-btn').addEventListener('click', async
 });
 
 // ── Refresh ──────────────────────────────────────────────────────────────────
-document.getElementById('refresh-btn').addEventListener('click', loadAllPayments);
+document.getElementById('refresh-btn').addEventListener('click', async () => {
+  await loadPaymentsForSelectedAccount(true);
+});
+
+// ── Direction & Status filters ───────────────────────────────────────────────
+document.getElementById('filter-direction').addEventListener('change', () => {
+  paymentsState.activeFilters.direction = document.getElementById('filter-direction').value;
+  applyFiltersAndRender();
+});
+
+document.getElementById('filter-status').addEventListener('change', () => {
+  paymentsState.activeFilters.status = document.getElementById('filter-status').value;
+  applyFiltersAndRender();
+});
 
 // ── Enter key support for lookups ────────────────────────────────────────────
 document.getElementById('lookup-payment-id').addEventListener('keydown', e => {
@@ -136,10 +246,7 @@ document.getElementById('lookup-payment-id').addEventListener('keydown', e => {
 document.getElementById('lookup-payment-reference').addEventListener('keydown', e => {
   if (e.key === 'Enter') document.getElementById('lookup-by-reference-btn').click();
 });
-document.getElementById('lookup-account-id').addEventListener('keydown', e => {
-  if (e.key === 'Enter') document.getElementById('lookup-by-account-btn').click();
-});
 
 // Initial load
-loadAllPayments();
+loadPaymentsPage();
 
