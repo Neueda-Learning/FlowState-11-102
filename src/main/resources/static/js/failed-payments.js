@@ -5,7 +5,7 @@
  * de-duplicate by payment_id, and filter to status === 'FAILED'.
  *
  * Displayed fields: payment_id, payment_reference, source_account_id,
- *   destination_account_id, amount, currency, failure_reason, retry_count
+ *   destination_account_id, amount, currency, failure_reason
  */
 
 async function loadFailedPayments() {
@@ -52,7 +52,7 @@ async function loadFailedPayments() {
       <table>
         <thead><tr>
           <th>ID</th><th>Reference</th><th>From Acc</th><th>To Acc</th>
-          <th>Amount</th><th>Currency</th><th>Failure Reason</th><th>Retries</th><th></th>
+          <th>Amount</th><th>Currency</th><th>Failure Reason</th><th></th>
         </tr></thead>
         <tbody>
           ${failed.map(p => `
@@ -65,12 +65,6 @@ async function loadFailedPayments() {
               <td>${escapeHtml(p.currency)}</td>
               <td style="color:var(--danger);font-size:.82rem;max-width:260px">
                 ${escapeHtml(p.failure_reason || '—')}
-              </td>
-              <td>
-                <span style="background:var(--danger-light);color:var(--danger);
-                  padding:2px 8px;border-radius:99px;font-size:.78rem;font-weight:600">
-                  ${escapeHtml(String(p.retry_count ?? 0))}
-                </span>
               </td>
               <td>
                 <a href="payment-details.html?id=${p.payment_id}" class="btn btn-secondary btn-sm">Details</a>
