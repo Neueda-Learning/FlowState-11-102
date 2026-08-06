@@ -21,9 +21,20 @@
 // ── Shared localStorage key for selected account number (synced with payments page) ──
 const FS_SELECTED_ACCOUNT_KEY = 'fs_selected_account_number';
 
+function fallbackUuidV4() {
+  // Fallback for non-secure origins (e.g., http://<ip>) where crypto.randomUUID may be unavailable.
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 // ── Generate and display a fresh idempotency key ─────────────────────────────
 function generateIdempotencyKey() {
-  const key = crypto.randomUUID(); // Browser-native UUID v4
+  const key = (window.crypto && typeof window.crypto.randomUUID === 'function')
+    ? window.crypto.randomUUID()
+    : fallbackUuidV4();
   document.getElementById('idempotency-key').value = key;
   updateRequestPreview();
   return key;
