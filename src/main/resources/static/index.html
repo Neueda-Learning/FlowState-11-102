@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login — FlowState</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div class="login-page">
+  <div class="login-card">
+
+    <div class="login-logo">
+      <!-- Logo icon -->
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="5" width="20" height="14" rx="3"/>
+        <path d="M2 10h20"/>
+      </svg>
+      <div class="brand">Flow<span>State</span></div>
+    </div>
+
+    <h2>Welcome back</h2>
+    <p class="sub">Sign in to the Payment Processing System</p>
+
+    <div id="login-alert"></div>
+
+    <form id="login-form" novalidate>
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" placeholder="admin" autocomplete="username" required />
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required />
+      </div>
+      <button type="submit" class="btn btn-primary btn-full btn-lg" style="margin-top:8px" id="login-btn">
+        Sign In
+      </button>
+    </form>
+
+    <p class="login-note">
+      ⚠️ No authentication is configured in the backend.<br>
+      Clicking <strong>Sign In</strong> will take you directly to the dashboard.
+    </p>
+
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/app.js"></script>
+<script>
+  /**
+   * Login page logic.
+   *
+   * The current Spring Boot backend does NOT implement authentication.
+   * We attempt a lightweight connectivity check (GET /account/) to verify
+   * the server is reachable, then redirect to dashboard.html.
+   */
+  document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const alertBox = document.getElementById('login-alert');
+    const btn = document.getElementById('login-btn');
+    alertBox.innerHTML = '';
+    btn.disabled = true;
+    btn.textContent = 'Connecting…';
+
+    try {
+      // Connectivity check — if the server is offline this will throw.
+      await getAllAccounts();
+    } catch (err) {
+      if (err.type === 'network') {
+        alertBox.innerHTML = `<div class="alert alert-danger">${escapeHtml(err.message)}</div>`;
+        btn.disabled = false;
+        btn.textContent = 'Sign In';
+        return;
+      }
+      // Any HTTP error still means the server is up — proceed.
+    }
+
+    // Store a simple session flag (no real auth in this backend).
+    sessionStorage.setItem('fs_logged_in', '1');
+    window.location.href = 'dashboard.html';
+  });
+</script>
+</body>
+</html>
+

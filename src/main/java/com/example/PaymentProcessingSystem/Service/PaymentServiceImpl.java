@@ -19,6 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class PaymentServiceImpl implements PaymentService {
@@ -26,6 +29,8 @@ public class PaymentServiceImpl implements PaymentService {
     public  final AccountRepository accountRepository;
     private final GatewayClient gatewayClient;
     private final PaymentHistoryRepository paymentHistoryRepository;
+
+    private final ScheduledExecutorService scheduler= Executors.newSingleThreadScheduledExecutor();
 
     public PaymentServiceImpl(PaymentRepository paymentRepository, AccountRepository accountRepository,
                               GatewayClient gatewayClient,PaymentHistoryRepository paymentHistoryRepository) {
@@ -50,25 +55,37 @@ public class PaymentServiceImpl implements PaymentService {
         Payment savedPayment = paymentRepository.save(payment);
         recordHistory(savedPayment.payment_id(), "CREATED", "Payment created");
 
+
+        scheduler.schedule(()->{continuePayment(savedPayment.payment_id()); }, 10, TimeUnit.SECONDS);
+        return buildPaymentResponse(savedPayment,null, "Payment created and processing started");
+
+
+
+
+    }
+    private  void continuePayment(Long paymentId) {
+        Payment payment = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new PaymentNotFoundException("Payment not found with id"));
+        if("FAILED".equals(payment.status()))  {
+           return;
+        }
         //step 4:Generate payment reference
-        String paymentReference = generatePaymentReference(savedPayment.payment_id());
-        paymentRepository.updatePaymentReference(savedPayment.payment_id(), paymentReference);
+        String paymentReference = generatePaymentReference(paymentId);
+        paymentRepository.updatePaymentReference(paymentId, paymentReference);
 
         //step 5:update status to validated
-        paymentRepository.updatePaymentStatus(savedPayment.payment_id(), "VALIDATED");
-        recordHistory(savedPayment.payment_id(), "VALIDATED", "Payment validated");
+        paymentRepository.updatePaymentStatus(paymentId, "VALIDATED");
+        recordHistory(paymentId, "VALIDATED", "Payment validated");
 
         //step 6:update status to sent
-        paymentRepository.updatePaymentStatus(savedPayment.payment_id(), "SENT");
-        recordHistory(savedPayment.payment_id(), "SENT", "Payment sent to gateway");
+        paymentRepository.updatePaymentStatus(paymentId, "SENT");
+        recordHistory(paymentId, "SENT", "Payment sent to gateway");
 
         //step 7:send payment to gateway
-        GatewayResponse gatewayResponse = sendToGateway(savedPayment, paymentReference);
+        GatewayResponse response = sendToGateway(payment, paymentReference);
 
         //step 8:process gateway response
-        return processGatewayResponse(savedPayment,paymentReference, gatewayResponse);
-
-
+        processGatewayResponse(payment,paymentReference, response);
     }
 
     private AccountPair validateRequestAndGetAccounts(PaymentRequest request) {

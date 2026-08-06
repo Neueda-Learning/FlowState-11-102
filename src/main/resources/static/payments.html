@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Payments — FlowState</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div class="main-content">
+
+    <header class="topbar">
+      <span class="topbar-title">Payments</span>
+      <div class="topbar-actions">
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--gray-200);border-radius:999px;background:var(--gray-50)">
+          <span style="font-size:.72rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--gray-500)">Switch Account</span>
+          <select id="account-switcher" aria-label="Switch to account page" style="border:none;background:transparent;min-width:240px;outline:none;font-size:.88rem">
+            <option value="">Choose account…</option>
+          </select>
+        </div>
+        <a href="create-payment.html" class="btn btn-primary btn-sm">+ New Payment</a>
+      </div>
+    </header>
+
+    <main class="page-body">
+      <div class="page-header">
+        <h1>Payment Records</h1>
+        <p>Use the top-right account switcher to view payments for a specific account.</p>
+      </div>
+
+      <!-- ── Lookup / Filter forms ────────────────────────────── -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:18px;margin-bottom:24px">
+
+        <div class="card">
+          <h3 style="font-size:.95rem;margin-bottom:14px">Look up by Payment ID</h3>
+          <label for="lookup-payment-id" class="form-hint" style="display:block;margin-bottom:6px">Payment ID</label>
+          <div style="display:flex;gap:8px">
+            <input type="number" id="lookup-payment-id" aria-label="Payment ID" placeholder="e.g. 1" min="1" />
+            <button class="btn btn-primary btn-sm" id="lookup-by-id-btn">Search</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="font-size:.95rem;margin-bottom:14px">Look up by Reference</h3>
+          <label for="lookup-payment-reference" class="form-hint" style="display:block;margin-bottom:6px">Payment Reference</label>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="lookup-payment-reference" aria-label="Payment Reference" placeholder="e.g. PAY000001" />
+            <button class="btn btn-primary btn-sm" id="lookup-by-reference-btn">Search</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="font-size:.95rem;margin-bottom:14px">Filter by Direction</h3>
+          <label for="filter-direction" class="form-hint" style="display:block;margin-bottom:6px">Direction</label>
+          <select id="filter-direction" aria-label="Filter by direction">
+            <option value="">All</option>
+            <option value="Debited">Debited</option>
+            <option value="Credited">Credited</option>
+          </select>
+        </div>
+
+        <div class="card">
+          <h3 style="font-size:.95rem;margin-bottom:14px">Filter by Status</h3>
+          <label for="filter-status" class="form-hint" style="display:block;margin-bottom:6px">Status</label>
+          <select id="filter-status" aria-label="Filter by status">
+            <option value="">All</option>
+            <option value="CREATED">CREATED</option>
+            <option value="VALIDATED">VALIDATED</option>
+            <option value="SENT">SENT</option>
+            <option value="COMPLETED">COMPLETED</option>
+            <option value="FAILED">FAILED</option>
+          </select>
+        </div>
+
+      </div>
+
+      <!-- ── Results ───────────────────────────────────────────── -->
+      <div class="card">
+        <div class="section-header">
+          <h2 id="results-title">Payments</h2>
+          <button class="btn btn-secondary btn-sm" id="refresh-btn">↺ Refresh</button>
+        </div>
+        <div id="payments-container">
+          <div class="spinner-wrap"><div class="spinner"></div></div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/app.js"></script>
+<script src="js/sidebar.js"></script>
+<script src="js/payments.js"></script>
+</body>
+</html>
+
