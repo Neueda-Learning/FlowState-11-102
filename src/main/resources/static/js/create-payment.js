@@ -81,7 +81,16 @@ function getSourceAccountIdFromQueryParam() {
 async function populateAccountDropdowns() {
   try {
     const accounts = await getAllAccounts();
-    const activeAccounts = accounts.filter(a => a.status === 'ACTIVE');
+    // Be lenient with status casing from backend/data seeds (ACTIVE/active/Active).
+    let activeAccounts = accounts.filter(
+      a => String(a.status || '').trim().toUpperCase() === 'ACTIVE'
+    );
+
+    // If no status-normalized ACTIVE rows are found, fall back to all accounts
+    // so the page still loads instead of appearing empty.
+    if (activeAccounts.length === 0 && accounts.length > 0) {
+      activeAccounts = accounts;
+    }
 
     const srcEl      = document.getElementById('source-account');
     const dstEl      = document.getElementById('dest-account');
