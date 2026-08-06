@@ -1,0 +1,73 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: flowstate-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-n3u3da!}
+      MYSQL_DATABASE: paymentprocessingsystem
+    ports:
+      - "3306:3306"
+    volumes:
+      - flowstate-db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-n3u3da!}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - flowstate-net
+
+  simulator:
+    build:
+      context: ../FlowState-11-102-simulator
+      dockerfile: ../FlowState-11-102/Dockerfile.simulator
+    container_name: flowstate-simulator
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    networks:
+      - flowstate-net
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: flowstate-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      simulator:
+        condition: service_started
+    environment:
+      SERVER_PORT: 8080
+      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/paymentprocessingsystem?allowPublicKeyRetrieval=true&useSSL=false
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-n3u3da!}
+      GATEWAY_BASE_URL: http://simulator:8081
+    ports:
+      - "8080:8080"
+    networks:
+      - flowstate-net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: flowstate-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8088:80"
+    networks:
+      - flowstate-net
+
+volumes:
+  flowstate-db-data:
+
+networks:
+  flowstate-net:
+    driver: bridge
+

@@ -1,0 +1,7 @@
+target/
+.git/
+.idea/
+*.log
+test-output.txt
+test-results.log
+

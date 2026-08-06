@@ -31,10 +31,9 @@ function resolveApiBase() {
   const explicitBase = window.localStorage.getItem('fs_api_base') || window.__FS_API_BASE__;
   if (explicitBase) return String(explicitBase).replace(/\/$/, '');
 
-  // Same-origin works when frontend is hosted by Spring Boot; fallback supports local static hosting.
+  // Prefer same-origin so Nginx reverse proxy setups work in Docker without CORS.
   if (window.location.origin && window.location.origin.startsWith('http')) {
-    if (window.location.port === '8080') return window.location.origin;
-    return 'http://localhost:8080';
+    return window.location.origin;
   }
 
   return 'http://localhost:8080';
