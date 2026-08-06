@@ -278,15 +278,53 @@ input::placeholder, textarea::placeholder { color: var(--gray-400); }
 .breadcrumb .sep { color: var(--gray-300); }
 .breadcrumb .current { color: var(--gray-700); font-weight: 500; }
 
-/* ── Login Page ───────────────────────────────────────────── */
+/* ── Login / Landing Page ─────────────────────────────────── */
 .login-page {
   min-height: 100vh; display: flex; align-items: center; justify-content: center;
-  background: rgba(255, 255, 255, 0.95);
+  background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 40%, #7c3aed 75%, #db2777 100%);
+  position: relative; overflow: hidden;
+}
+.login-page::before {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse at 20% 50%, rgba(120,180,255,0.25) 0%, transparent 60%),
+              radial-gradient(ellipse at 80% 20%, rgba(200,100,255,0.2) 0%, transparent 55%),
+              radial-gradient(ellipse at 60% 80%, rgba(255,100,150,0.15) 0%, transparent 55%);
+  pointer-events: none;
 }
 .login-card {
-  background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(10px); border-radius: 14px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  padding: 42px 40px; width: 100%; max-width: 420px; border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-radius: 20px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255,255,255,0.4);
+  padding: 52px 48px; width: 100%; max-width: 460px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  position: relative; z-index: 1;
 }
+/* Landing-card overrides */
+.landing-card { text-align: center; }
+.landing-logo { display: flex; justify-content: center; margin-bottom: 20px; }
+.landing-logo svg { filter: drop-shadow(0 4px 12px rgba(37,99,235,0.4)); }
+.landing-title {
+  font-size: 2.8rem; font-weight: 900; letter-spacing: -0.03em;
+  color: #fff; margin-bottom: 8px;
+}
+.landing-title span { color: #93c5fd; }
+.landing-sub {
+  font-size: 1rem; font-weight: 600; text-transform: uppercase; letter-spacing: .12em;
+  color: rgba(255,255,255,0.75); margin-bottom: 18px;
+}
+.landing-desc {
+  font-size: .92rem; color: rgba(255,255,255,0.8); line-height: 1.65;
+  margin-bottom: 36px;
+}
+.landing-btn {
+  background: #fff !important; color: #2563eb !important;
+  font-weight: 700; font-size: 1rem; border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.18);
+  transition: transform .15s, box-shadow .15s;
+}
+.landing-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(0,0,0,0.22); }
 .login-logo { display: flex; align-items: center; gap: 10px; justify-content: center; margin-bottom: 28px; }
 .login-logo .brand { font-size: 1.35rem; font-weight: 800; color: #1e293b; }
 .login-logo .brand span { color: var(--primary); }

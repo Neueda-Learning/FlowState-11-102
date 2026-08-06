@@ -3,84 +3,123 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Login — FlowState</title>
+  <title>FlowState — Payment Processing</title>
   <link rel="stylesheet" href="css/style.css" />
+  <style>
+    body { margin: 0; padding: 0; }
+
+    .landing-page {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f0f4ff;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* soft pastel blobs in the background */
+    .landing-page::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 15% 40%, rgba(147, 197, 253, 0.45) 0%, transparent 55%),
+        radial-gradient(ellipse at 85% 20%, rgba(196, 181, 253, 0.4)  0%, transparent 55%),
+        radial-gradient(ellipse at 55% 85%, rgba(251, 207, 232, 0.35) 0%, transparent 55%);
+      pointer-events: none;
+    }
+
+    .landing-glass-card {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.55);
+      backdrop-filter: blur(28px) saturate(160%);
+      -webkit-backdrop-filter: blur(28px) saturate(160%);
+      border: 1px solid rgba(255, 255, 255, 0.75);
+      border-radius: 24px;
+      box-shadow: 0 12px 48px rgba(37, 99, 235, 0.12), 0 2px 8px rgba(0,0,0,0.06);
+      padding: 64px 56px;
+      width: 100%;
+      max-width: 460px;
+    }
+
+    .landing-icon {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 22px;
+    }
+
+    .landing-icon svg {
+      filter: drop-shadow(0 4px 14px rgba(37, 99, 235, 0.3));
+    }
+
+    .landing-company {
+      font-size: 3rem;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      color: #1e3a8a;
+      margin: 0 0 6px;
+      line-height: 1;
+    }
+
+    .landing-company span {
+      color: #2563eb;
+    }
+
+    .landing-tagline {
+      font-size: 0.92rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: #64748b;
+      margin-bottom: 36px;
+    }
+
+    .gs-btn {
+      display: inline-block;
+      background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+      color: #fff !important;
+      font-size: 1.05rem;
+      font-weight: 700;
+      padding: 16px 48px;
+      border-radius: 14px;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 6px 24px rgba(37, 99, 235, 0.35);
+      transition: transform 0.15s, box-shadow 0.15s;
+      letter-spacing: 0.02em;
+    }
+
+    .gs-btn:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 32px rgba(37, 99, 235, 0.42);
+    }
+  </style>
 </head>
 <body>
 
-<div class="login-page">
-  <div class="login-card">
+<div class="landing-page">
+  <div class="landing-glass-card">
 
-    <div class="login-logo">
-      <!-- Logo icon -->
-      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <div class="landing-icon">
+      <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <rect x="2" y="5" width="20" height="14" rx="3"/>
         <path d="M2 10h20"/>
       </svg>
-      <div class="brand">Flow<span>State</span></div>
     </div>
 
-    <h2>Welcome back</h2>
-    <p class="sub">Sign in to the Payment Processing System</p>
+    <h1 class="landing-company">Flow<span>State</span></h1>
+    <p class="landing-tagline">Payment Processing System</p>
 
-    <div id="login-alert"></div>
-
-    <form id="login-form" novalidate>
-      <div class="form-group">
-        <label for="username">Username</label>
-        <input type="text" id="username" placeholder="admin" autocomplete="username" required />
-      </div>
-      <div class="form-group">
-        <label for="password">Password</label>
-        <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required />
-      </div>
-      <button type="submit" class="btn btn-primary btn-full btn-lg" style="margin-top:8px" id="login-btn">
-        Sign In
-      </button>
-    </form>
-
-    <p class="login-note">
-      ⚠️ No authentication is configured in the backend.<br>
-      Clicking <strong>Sign In</strong> will take you directly to the dashboard.
-    </p>
+    <button class="gs-btn" id="get-started-btn">Get Started →</button>
 
   </div>
 </div>
 
-<script src="js/api.js"></script>
-<script src="js/app.js"></script>
 <script>
-  /**
-   * Login page logic.
-   *
-   * The current Spring Boot backend does NOT implement authentication.
-   * We attempt a lightweight connectivity check (GET /account/) to verify
-   * the server is reachable, then redirect to dashboard.html.
-   */
-  document.getElementById('login-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const alertBox = document.getElementById('login-alert');
-    const btn = document.getElementById('login-btn');
-    alertBox.innerHTML = '';
-    btn.disabled = true;
-    btn.textContent = 'Connecting…';
-
-    try {
-      // Connectivity check — if the server is offline this will throw.
-      await getAllAccounts();
-    } catch (err) {
-      if (err.type === 'network') {
-        alertBox.innerHTML = `<div class="alert alert-danger">${escapeHtml(err.message)}</div>`;
-        btn.disabled = false;
-        btn.textContent = 'Sign In';
-        return;
-      }
-      // Any HTTP error still means the server is up — proceed.
-    }
-
-    // Store a simple session flag (no real auth in this backend).
-    sessionStorage.setItem('fs_logged_in', '1');
+  document.getElementById('get-started-btn').addEventListener('click', () => {
     window.location.href = 'dashboard.html';
   });
 </script>
