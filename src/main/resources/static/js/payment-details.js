@@ -102,7 +102,6 @@ function renderPaymentDetails(payment, sourceAccountNumber, destinationAccountNu
       ${pRow('Failure Reason', payment.failure_reason
         ? `<span style="color:var(--danger)">${escapeHtml(payment.failure_reason)}</span>`
         : '—')}
-      ${pRow('Retry Count', payment.retry_count ?? 0)}
       ${pRow('Message', payment.message ? escapeHtml(payment.message) : '—')}
     </div>`;
 }
@@ -128,14 +127,12 @@ async function resolveAccountNumberById(accountId) {
 function renderPaymentActions(payment) {
   const actionsEl = document.getElementById('payment-actions');
   const cancellableStatus = ['CREATED', 'VALIDATED'].includes(payment.status);
-  const canRetry = payment.status === 'FAILED';
   const remainingMs = getCancelRemainingMs();
   const cancelAllowed = cancellableStatus && remainingMs > 0;
 
   actionsEl.style.display = 'flex';
   actionsEl.innerHTML = `
     <a href="payments.html" class="btn btn-secondary">← All Payments</a>
-    ${canRetry ? `<a href="${buildRetryPaymentUrl(payment)}" class="btn btn-primary">Retry Payment</a>` : ''}
     ${cancellableStatus ? `<button class="btn btn-danger" id="cancel-btn" ${cancelAllowed ? '' : 'disabled'}></button>` : ''}
   `;
 
@@ -242,17 +239,6 @@ function stopPolling() {
   }
 }
 
-function buildRetryPaymentUrl(payment) {
-  const params = new URLSearchParams({
-    retryOf: String(payment.payment_id),
-    sourceAccountId: String(payment.source_account_id),
-    destinationAccountId: String(payment.destination_account_id),
-    amount: String(payment.amount ?? ''),
-    currency: String(payment.currency ?? ''),
-  });
-
-  return `create-payment.html?${params.toString()}`;
-}
 
 // ── Cancel handler ─────────────────────────────────────────────────────────
 async function cancelThisPayment(paymentId) {

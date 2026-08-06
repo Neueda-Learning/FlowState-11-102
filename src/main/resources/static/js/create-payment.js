@@ -310,7 +310,6 @@ function showPaymentResult(response, context = {}) {
       ${response.failure_reason
           ? resultDetailRow('Failure Reason', `<span style="color:var(--danger)">${escapeHtml(response.failure_reason)}</span>`)
           : ''}
-      ${resultDetailRow('Retry Count',       response.retry_count ?? 0)}
       ${response.message
           ? resultDetailRow('Message', escapeHtml(response.message))
           : ''}
