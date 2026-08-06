@@ -13,6 +13,12 @@
     <header class="topbar">
       <span class="topbar-title">New Payment</span>
       <div class="topbar-actions">
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--gray-200);border-radius:999px;background:var(--gray-50)">
+          <span style="font-size:.72rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--gray-500)">From Account</span>
+          <select id="account-switcher" aria-label="Switch source account" style="border:none;background:transparent;min-width:220px;outline:none;font-size:.88rem">
+            <option value="">Loading…</option>
+          </select>
+        </div>
         <a href="payments.html" class="btn btn-secondary btn-sm">← All Payments</a>
       </div>
     </header>
@@ -105,10 +111,7 @@
             </div>
           </form>
 
-          <div style="margin-top:16px;padding:12px;background:var(--gray-50);border-radius:var(--radius);font-size:.8rem;color:var(--gray-500)">
-            <strong>Request body sent to <code>POST /payments</code>:</strong><br>
-            <code id="request-preview" style="word-break:break-all;color:var(--gray-700)">{ … fill the form … }</code>
-          </div>
+          <code id="request-preview" style="display:none"></code>
         </div>
       </div>
 
