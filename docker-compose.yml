@@ -47,7 +47,7 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-n3u3da!}
       GATEWAY_BASE_URL: http://simulator:8081
     ports:
-      - "8080:8080"
+      - "8082:8080"
     networks:
       - flowstate-net
 
@@ -70,4 +70,3 @@ volumes:
 networks:
   flowstate-net:
     driver: bridge
-
