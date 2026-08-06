@@ -16,20 +16,29 @@ import com.example.PaymentProcessingSystem.model.Account;
 import com.example.PaymentProcessingSystem.model.Payment;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -50,6 +59,11 @@ class PaymentServiceImplTest {
 
     @InjectMocks
     private PaymentServiceImpl paymentService;
+
+    @SuppressWarnings("unchecked")
+    private static ScheduledFuture<?> completedFuture() {
+        return (ScheduledFuture<?>) org.mockito.Mockito.mock(ScheduledFuture.class);
+    }
 
 
     @Test
@@ -232,6 +246,112 @@ class PaymentServiceImplTest {
         assertThrows(InvalidPaymentException.class, () -> paymentService.createPayment(request));
         verify(paymentRepository, never()).save(any(Payment.class));
         verify(gatewayClient, never()).processPayment(any());
+    }
+
+    @Test
+    void createPayment_schedulesContinuationAfterTenSeconds() {
+        ScheduledExecutorService scheduler = org.mockito.Mockito.mock(ScheduledExecutorService.class);
+        ReflectionTestUtils.setField(paymentService, "scheduler", scheduler);
+
+        Account source = account(1L, "ACC1001", new BigDecimal("1000.00"));
+        Account destination = account(2L, "ACC1002", new BigDecimal("500.00"));
+        Payment created = payment(20L, null, 1L, 2L, new BigDecimal("100.00"), "INR", "CREATED", null, 0, "idem-schedule-only");
+
+        when(paymentRepository.findByIdempotencyKey("idem-schedule-only")).thenReturn(Optional.empty());
+        when(accountRepository.findByAccountNumber("ACC1001")).thenReturn(Optional.of(source));
+        when(accountRepository.findByAccountNumber("ACC1002")).thenReturn(Optional.of(destination));
+        when(paymentRepository.save(any(Payment.class))).thenReturn(created);
+        doReturn(completedFuture()).when(scheduler).schedule(any(Runnable.class), eq(10L), eq(TimeUnit.SECONDS));
+
+        PaymentResponse response = paymentService.createPayment(new PaymentRequest(
+                "ACC1001", "ACC1002", new BigDecimal("100.00"), "INR", "idem-schedule-only"
+        ));
+
+        assertEquals("CREATED", response.status());
+        assertTrue(response.message().contains("processing started"));
+        verify(scheduler).schedule(any(Runnable.class), eq(10L), eq(TimeUnit.SECONDS));
+    }
+
+    @Test
+    void scheduledContinuation_successFlow_updatesStatusesAndBalances() {
+        ScheduledExecutorService scheduler = org.mockito.Mockito.mock(ScheduledExecutorService.class);
+        ReflectionTestUtils.setField(paymentService, "scheduler", scheduler);
+
+        Account source = account(1L, "ACC1001", new BigDecimal("1000.00"));
+        Account destination = account(2L, "ACC1002", new BigDecimal("500.00"));
+        Payment created = payment(30L, null, 1L, 2L, new BigDecimal("100.00"), "INR", "CREATED", null, 0, "idem-scheduled-success");
+        Payment completed = payment(30L, "PAY000030", 1L, 2L, new BigDecimal("100.00"), "INR", "COMPLETED", null, 0, "idem-scheduled-success");
+
+        when(paymentRepository.findByIdempotencyKey("idem-scheduled-success")).thenReturn(Optional.empty());
+        when(accountRepository.findByAccountNumber("ACC1001")).thenReturn(Optional.of(source));
+        when(accountRepository.findByAccountNumber("ACC1002")).thenReturn(Optional.of(destination));
+        when(paymentRepository.save(any(Payment.class))).thenReturn(created);
+        doReturn(completedFuture()).when(scheduler).schedule(any(Runnable.class), eq(10L), eq(TimeUnit.SECONDS));
+
+        when(paymentRepository.findById(30L)).thenReturn(Optional.of(created), Optional.of(completed));
+        when(gatewayClient.processPayment(any())).thenReturn(new GatewayResponse("SUCCESS", "Accepted"));
+        when(accountRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(source));
+        when(accountRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(destination));
+
+        paymentService.createPayment(new PaymentRequest(
+                "ACC1001", "ACC1002", new BigDecimal("100.00"), "INR", "idem-scheduled-success"
+        ));
+
+        ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
+        verify(scheduler).schedule(runnableCaptor.capture(), eq(10L), eq(TimeUnit.SECONDS));
+
+        runnableCaptor.getValue().run();
+
+        verify(paymentRepository).updatePaymentReference(30L, "PAY000030");
+        verify(paymentRepository).updatePaymentStatus(30L, "VALIDATED");
+        verify(paymentRepository).updatePaymentStatus(30L, "SENT");
+        verify(paymentRepository).updatePaymentStatus(30L, "COMPLETED");
+
+        ArgumentCaptor<Account> accountCaptor = ArgumentCaptor.forClass(Account.class);
+        verify(accountRepository, times(2)).update(accountCaptor.capture());
+        List<Account> updatedAccounts = accountCaptor.getAllValues();
+
+        Account updatedSource = updatedAccounts.stream().filter(a -> a.account_id().equals(1L)).findFirst().orElseThrow();
+        Account updatedDestination = updatedAccounts.stream().filter(a -> a.account_id().equals(2L)).findFirst().orElseThrow();
+
+        assertEquals(new BigDecimal("900.00"), updatedSource.balance());
+        assertEquals(new BigDecimal("600.00"), updatedDestination.balance());
+    }
+
+    @Test
+    void scheduledContinuation_gatewayFailure_updatesFailureWithoutBalanceChange() {
+        ScheduledExecutorService scheduler = org.mockito.Mockito.mock(ScheduledExecutorService.class);
+        ReflectionTestUtils.setField(paymentService, "scheduler", scheduler);
+
+        Account source = account(1L, "ACC1001", new BigDecimal("1000.00"));
+        Account destination = account(2L, "ACC1002", new BigDecimal("500.00"));
+        Payment created = payment(31L, null, 1L, 2L, new BigDecimal("100.00"), "INR", "CREATED", null, 0, "idem-scheduled-fail");
+        Payment failed = payment(31L, "PAY000031", 1L, 2L, new BigDecimal("100.00"), "INR", "FAILED", "FAILED", 1, "idem-scheduled-fail");
+
+        when(paymentRepository.findByIdempotencyKey("idem-scheduled-fail")).thenReturn(Optional.empty());
+        when(accountRepository.findByAccountNumber("ACC1001")).thenReturn(Optional.of(source));
+        when(accountRepository.findByAccountNumber("ACC1002")).thenReturn(Optional.of(destination));
+        when(paymentRepository.save(any(Payment.class))).thenReturn(created);
+        doReturn(completedFuture()).when(scheduler).schedule(any(Runnable.class), eq(10L), eq(TimeUnit.SECONDS));
+
+        when(paymentRepository.findById(31L)).thenReturn(Optional.of(created), Optional.of(failed));
+        when(gatewayClient.processPayment(any())).thenReturn(new GatewayResponse("FAILED", "Gateway timeout"));
+
+        paymentService.createPayment(new PaymentRequest(
+                "ACC1001", "ACC1002", new BigDecimal("100.00"), "INR", "idem-scheduled-fail"
+        ));
+
+        ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
+        verify(scheduler).schedule(runnableCaptor.capture(), eq(10L), eq(TimeUnit.SECONDS));
+
+        runnableCaptor.getValue().run();
+
+        verify(paymentRepository).updatePaymentReference(31L, "PAY000031");
+        verify(paymentRepository).updatePaymentStatus(31L, "VALIDATED");
+        verify(paymentRepository).updatePaymentStatus(31L, "SENT");
+        verify(paymentRepository).updatePaymentStatusAndFailureReason(31L, "FAILED", "FAILED");
+        verify(paymentRepository).incrementRetryCount(31L);
+        verify(accountRepository, never()).update(any(Account.class));
     }
 
 
