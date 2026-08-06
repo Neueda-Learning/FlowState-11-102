@@ -55,7 +55,7 @@ function renderPaymentsTable(payments, titleText, selectedAccountId) {
       <table>
         <thead><tr>
           <th>ID</th><th>Reference</th><th>From Acc</th><th>To Acc</th><th>Direction</th>
-          <th>Amount</th><th>Currency</th><th>Status</th><th>Retries</th><th></th>
+          <th>Amount</th><th>Currency</th><th>Status</th><th></th>
         </tr></thead>
         <tbody>
           ${payments.map(p => `
@@ -68,7 +68,6 @@ function renderPaymentsTable(payments, titleText, selectedAccountId) {
               <td><strong>${formatCurrency(p.amount, p.currency)}</strong></td>
               <td>${escapeHtml(p.currency)}</td>
               <td><span class="${statusBadgeClass(p.status)}">${escapeHtml(p.status)}</span></td>
-              <td>${escapeHtml(String(p.retry_count ?? 0))}</td>
               <td><a href="payment-details.html?id=${p.payment_id}" class="btn btn-secondary btn-sm">Details</a></td>
             </tr>`).join('')}
         </tbody>
@@ -249,4 +248,3 @@ document.getElementById('lookup-payment-reference').addEventListener('keydown', 
 
 // Initial load
 loadPaymentsPage();
-

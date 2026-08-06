@@ -1,7 +1,6 @@
 services:
   db:
     image: mysql:8.0
-    container_name: flowstate-db
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-n3u3da!}
@@ -22,7 +21,6 @@ services:
     build:
       context: ../FlowState-11-102-simulator
       dockerfile: ../FlowState-11-102/Dockerfile.simulator
-    container_name: flowstate-simulator
     restart: unless-stopped
     ports:
       - "8081:8081"
@@ -33,7 +31,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: flowstate-backend
     restart: unless-stopped
     depends_on:
       db:
@@ -55,7 +52,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
-    container_name: flowstate-frontend
     restart: unless-stopped
     depends_on:
       - backend

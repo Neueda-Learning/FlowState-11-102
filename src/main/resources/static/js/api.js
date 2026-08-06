@@ -29,7 +29,16 @@
 // ── Configuration ──────────────────────────────────────────────────────────
 function resolveApiBase() {
   const explicitBase = window.localStorage.getItem('fs_api_base') || window.__FS_API_BASE__;
-  if (explicitBase) return String(explicitBase).replace(/\/$/, '');
+  if (explicitBase) {
+    const normalizedBase = String(explicitBase).replace(/\/$/, '');
+    const isRemoteHost = window.location.hostname && !['localhost', '127.0.0.1'].includes(window.location.hostname);
+    const pointsToLocalhost = /https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(normalizedBase);
+
+    // Avoid stale localStorage overrides breaking remote/container deployments.
+    if (!(isRemoteHost && pointsToLocalhost)) {
+      return normalizedBase;
+    }
+  }
 
   // Prefer same-origin so Nginx reverse proxy setups work in Docker without CORS.
   if (window.location.origin && window.location.origin.startsWith('http')) {
