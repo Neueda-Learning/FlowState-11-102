@@ -18,6 +18,9 @@
  * }
  */
 
+// ── Shared localStorage key for selected account number (synced with payments page) ──
+const FS_SELECTED_ACCOUNT_KEY = 'fs_selected_account_number';
+
 // ── Generate and display a fresh idempotency key ─────────────────────────────
 function generateIdempotencyKey() {
   const key = crypto.randomUUID(); // Browser-native UUID v4
@@ -45,25 +48,154 @@ function updateRequestPreview() {
   document.getElementById('request-preview').textContent = JSON.stringify(preview, null, 2);
 }
 
+function getRetryContext() {
+  const retryOf = getQueryParam('retryOf');
+  if (!retryOf) return null;
+
+  return {
+    retryOf,
+    sourceAccountId: getQueryParam('sourceAccountId'),
+    destinationAccountId: getQueryParam('destinationAccountId'),
+    amount: getQueryParam('amount'),
+    currency: getQueryParam('currency'),
+  };
+}
+
+function showRetryNotice(message, type = 'info') {
+  const alertBox = document.getElementById('form-alert');
+  const className = {
+    info: 'alert-info',
+    warning: 'alert-warning',
+    error: 'alert-danger',
+  }[type] || 'alert-info';
+
+  alertBox.innerHTML = `<div class="alert ${className}">${escapeHtml(message)}</div>`;
+}
+
+// ── Get the source account ID from query params (e.g. coming from account-details page) ────
+function getSourceAccountIdFromQueryParam() {
+  return getQueryParam('fromAccountId');
+}
+
 // ── Populate account dropdowns from GET /account/ ────────────────────────────
 async function populateAccountDropdowns() {
   try {
     const accounts = await getAllAccounts();
     const activeAccounts = accounts.filter(a => a.status === 'ACTIVE');
 
-    const srcEl  = document.getElementById('source-account');
-    const dstEl  = document.getElementById('dest-account');
-
-    activeAccounts.forEach(a => {
-      const label = `${a.account_number} — ${a.account_holder_name} (${formatCurrency(a.balance, a.currency)})`;
-      srcEl.add(new Option(label, a.account_number));
-      dstEl.add(new Option(label, a.account_number));
-    });
+    const srcEl      = document.getElementById('source-account');
+    const dstEl      = document.getElementById('dest-account');
+    const switcherEl = document.getElementById('account-switcher');
 
     if (activeAccounts.length === 0) {
-      const warn = `<div class="alert alert-warning">No ACTIVE accounts found. Please ensure at least two active accounts exist.</div>`;
-      document.getElementById('form-alert').innerHTML = warn;
+      srcEl.innerHTML      = '<option value="">No active accounts</option>';
+      dstEl.innerHTML      = '<option value="">No active accounts</option>';
+      switcherEl.innerHTML = '<option value="">No active accounts</option>';
+      document.getElementById('form-alert').innerHTML =
+        '<div class="alert alert-warning">No ACTIVE accounts found. Please ensure at least two active accounts exist.</div>';
+      return;
     }
+
+    // Populate the top-right switcher
+    switcherEl.innerHTML = '';
+    activeAccounts.forEach(a => {
+      const label = `${a.account_number} — ${a.account_holder_name}`;
+      switcherEl.add(new Option(label, a.account_number));
+    });
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function rebuildSourceDropdown(selectedNumber) {
+      const account = activeAccounts.find(a => a.account_number === selectedNumber);
+      srcEl.innerHTML = '';
+      if (account) {
+        const label = `${account.account_number} — ${account.account_holder_name} (${formatCurrency(account.balance, account.currency)})`;
+        srcEl.add(new Option(label, account.account_number));
+      }
+      srcEl.value = selectedNumber;
+    }
+
+    function rebuildDestinationDropdown(excludeNumber, preselectNumber) {
+      const prevDest = preselectNumber !== undefined ? preselectNumber : dstEl.value;
+      dstEl.innerHTML = '<option value="">— Select destination account —</option>';
+      activeAccounts.forEach(a => {
+        if (a.account_number === excludeNumber) return;
+        const label = `${a.account_number} — ${a.account_holder_name} (${formatCurrency(a.balance, a.currency)})`;
+        const opt   = new Option(label, a.account_number);
+        if (a.account_number === prevDest) opt.selected = true;
+        dstEl.add(opt);
+      });
+    }
+
+    function applySourceSelection(sourceNumber, destNumber) {
+      switcherEl.value = sourceNumber;
+      rebuildSourceDropdown(sourceNumber);
+      rebuildDestinationDropdown(sourceNumber, destNumber);
+      updateRequestPreview();
+      localStorage.setItem(FS_SELECTED_ACCOUNT_KEY, sourceNumber);
+    }
+
+    // ── Determine initial source (priority: fromAccountId > retryOf source > localStorage > first account) ──
+    const retryContext   = getRetryContext();
+    const fromAccountId  = getSourceAccountIdFromQueryParam();
+
+    let initialSourceNumber = null;
+    let initialDestNumber   = null;
+
+    if (fromAccountId) {
+      const fromAccount = activeAccounts.find(a => String(a.account_id) === String(fromAccountId));
+      if (fromAccount) initialSourceNumber = fromAccount.account_number;
+    }
+
+    if (!initialSourceNumber && retryContext) {
+      const retrySrc = activeAccounts.find(a => String(a.account_id) === String(retryContext.sourceAccountId));
+      if (retrySrc) initialSourceNumber = retrySrc.account_number;
+      const retryDst = activeAccounts.find(a => String(a.account_id) === String(retryContext.destinationAccountId));
+      if (retryDst) initialDestNumber = retryDst.account_number;
+    }
+
+    if (!initialSourceNumber) {
+      const saved = localStorage.getItem(FS_SELECTED_ACCOUNT_KEY);
+      if (saved && activeAccounts.find(a => a.account_number === saved)) {
+        initialSourceNumber = saved;
+      }
+    }
+
+    if (!initialSourceNumber) {
+      initialSourceNumber = activeAccounts[0].account_number;
+    }
+
+    applySourceSelection(initialSourceNumber, initialDestNumber);
+
+    // If retry: also fill amount and currency, then show notice
+    if (retryContext) {
+      if (retryContext.amount)   document.getElementById('amount').value   = retryContext.amount;
+      if (retryContext.currency) document.getElementById('currency').value = retryContext.currency;
+      updateRequestPreview();
+
+      const hasAll = initialSourceNumber && initialDestNumber;
+      showRetryNotice(
+        hasAll
+          ? `Retrying payment #${retryContext.retryOf}. Review the details and submit a fresh payment.`
+          : `Retrying payment #${retryContext.retryOf}. Some account selections could not be restored — please review before submitting.`,
+        hasAll ? 'info' : 'warning'
+      );
+    }
+
+    // Top-right switcher drives both form dropdowns
+    switcherEl.addEventListener('change', () => {
+      applySourceSelection(switcherEl.value);
+    });
+
+    // If user manually changes the source dropdown, keep switcher in sync
+    srcEl.addEventListener('change', () => {
+      rebuildDestinationDropdown(srcEl.value);
+      if (switcherEl.value !== srcEl.value) {
+        switcherEl.value = srcEl.value;
+        localStorage.setItem(FS_SELECTED_ACCOUNT_KEY, srcEl.value);
+      }
+      updateRequestPreview();
+    });
+
   } catch (err) {
     document.getElementById('form-alert').innerHTML =
       `<div class="alert alert-danger">Failed to load accounts: ${escapeHtml(getErrorMessage(err))}</div>`;
@@ -121,7 +253,10 @@ document.getElementById('payment-form').addEventListener('submit', async (e) => 
   try {
     // POST /payments
     const response = await createPayment(paymentRequest);
-    showPaymentResult(response);
+    showPaymentResult(response, {
+      sourceAccountNumber: srcAccNum,
+      destinationAccountNumber: dstAccNum,
+    });
     showToast('Payment submitted successfully!', 'success');
   } catch (err) {
     alertBox.innerHTML = `<div class="alert alert-danger"><strong>Payment failed:</strong> ${escapeHtml(getErrorMessage(err))}</div>`;
@@ -135,7 +270,7 @@ document.getElementById('payment-form').addEventListener('submit', async (e) => 
 });
 
 // ── Show payment result ───────────────────────────────────────────────────────
-function showPaymentResult(response) {
+function showPaymentResult(response, context = {}) {
   document.getElementById('payment-form-section').style.display = 'none';
   const resultSection = document.getElementById('payment-result');
   resultSection.style.display = 'block';
@@ -147,8 +282,8 @@ function showPaymentResult(response) {
     <div style="background:var(--gray-50);border-radius:var(--radius);padding:18px">
       ${resultDetailRow('Payment ID',        response.payment_id)}
       ${resultDetailRow('Reference',         `<code>${escapeHtml(response.payment_reference || '—')}</code>`)}
-      ${resultDetailRow('From Account ID',   response.source_account_id)}
-      ${resultDetailRow('To Account ID',     response.destination_account_id)}
+      ${resultDetailRow('Source Account Number', escapeHtml(context.sourceAccountNumber || '—'))}
+      ${resultDetailRow('Destination Account Number', escapeHtml(context.destinationAccountNumber || '—'))}
       ${resultDetailRow('Amount',            `<strong>${formatCurrency(response.amount, response.currency)}</strong>`)}
       ${resultDetailRow('Currency',          response.currency)}
       ${resultDetailRow('Status',            `<span class="${statusBadgeClass(response.status)}">${escapeHtml(response.status)}</span>`)}
@@ -177,8 +312,10 @@ function resultDetailRow(label, value) {
 document.getElementById('make-another-btn').addEventListener('click', () => {
   document.getElementById('payment-result').style.display = 'none';
   document.getElementById('payment-form-section').style.display = 'block';
-  document.getElementById('payment-form').reset();
   document.getElementById('form-alert').innerHTML = '';
+  // Keep source account locked to current switcher selection — only reset amount, dest, key
+  document.getElementById('dest-account').selectedIndex = 0;
+  document.getElementById('amount').value = '';
   generateIdempotencyKey();
 });
 
